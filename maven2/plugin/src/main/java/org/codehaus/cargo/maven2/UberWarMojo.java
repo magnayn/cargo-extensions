@@ -35,6 +35,7 @@ import javax.xml.parsers.ParserConfigurationException;
 import org.apache.maven.artifact.Artifact;
 import org.apache.maven.artifact.factory.ArtifactFactory;
 import org.apache.maven.artifact.installer.ArtifactInstaller;
+import org.apache.maven.artifact.metadata.ArtifactMetadataSource;
 import org.apache.maven.artifact.repository.ArtifactRepository;
 import org.apache.maven.artifact.resolver.ArtifactResolver;
 import org.apache.maven.artifact.resolver.filter.ScopeArtifactFilter;
@@ -49,6 +50,7 @@ import org.codehaus.cargo.module.webapp.WarArchive;
 import org.codehaus.cargo.module.webapp.DefaultWarArchive;
 import org.codehaus.cargo.module.webapp.WebXmlIo;
 import org.codehaus.cargo.module.webapp.merge.WarArchiveMerger;
+import org.codehaus.cargo.module.opt.TZArchiveImplementation;
 import org.codehaus.plexus.PlexusConstants;
 import org.codehaus.plexus.PlexusContainer;
 import org.codehaus.plexus.configuration.PlexusConfiguration;
@@ -67,13 +69,11 @@ import org.xml.sax.SAXException;
 /**
  * Build an uberwar
  *
- * @version
  * @goal uberwar
  * @phase package
  * @requiresDependencyResolution runtime
  */
-public class UberWarMojo extends AbstractUberWarMojo implements Contextualizable
-{
+public class UberWarMojo extends AbstractUberWarMojo implements Contextualizable {
     /**
      * The directory for the generated WAR.
      *
@@ -100,11 +100,11 @@ public class UberWarMojo extends AbstractUberWarMojo implements Contextualizable
     /**
      * Attempt to resolve dependencies, rather than simply merging the files
      * in WEB-INF/lib. This is an experimental feature.
-     * 
+     *
      * @parameter
      */
     private boolean resolveDependencies = false;
-    
+
     /**
      * The id to use for the merge descriptor
      *
@@ -119,77 +119,86 @@ public class UberWarMojo extends AbstractUberWarMojo implements Contextualizable
      */
     private List wars;
 
-   /**
+    /**
      * The settings to use when building the uber war
      *
      * @parameter
      */
     private PlexusConfiguration settings;
 
-	/** @component */
-	private ArtifactFactory artifactFactory;
+    /**
+     * @component
+     */
+    private ArtifactFactory artifactFactory;
 
-	/** @component */
-	private ArtifactResolver resolver;
+    /**
+     * @component
+     */
+    private ArtifactResolver resolver;
 
-	/** @parameter expression="${localRepository}" */
-	private ArtifactRepository localRepository;
+    /**
+     * @parameter expression="${localRepository}"
+     */
+    private ArtifactRepository localRepository;
 
-	/** @parameter expression="${project.remoteArtifactRepositories}" */
-	private List remoteRepositories;
+    /**
+     * @parameter expression="${project.remoteArtifactRepositories}"
+     */
+    private List remoteRepositories;
 
-	/** @parameter expression="${project}" */
-	private MavenProject mavenProject;
+    /**
+     * @parameter expression="${project}"
+     */
+    private MavenProject mavenProject;
 
-	/** @component */
-	private MavenProjectBuilder mavenProjectBuilder;
+    /**
+     * @component
+     */
+    private MavenProjectBuilder mavenProjectBuilder;
 
-	/** @component */
-	private ArtifactInstaller installer;
+    /**
+     * @component
+     */
+    private ArtifactInstaller installer;
 
-	private PlexusContainer container;
-    
-    protected File getConfigDirectory()
-    {
-      return descriptor.getParentFile();
+    /**
+     * @component
+     */
+    private ArtifactMetadataSource artifactMetadataSource;
+
+    private PlexusContainer container;
+
+    protected File getConfigDirectory() {
+        return descriptor.getParentFile();
     }
-    
+
     /**
      * Executes the UberWarMojo on the current project.
      *
      * @throws MojoExecutionException if an error occured while building the webapp
      */
-    public void execute() throws MojoExecutionException
-    {
+    public void execute() throws MojoExecutionException {
+        TZArchiveImplementation.getInstance().setEnabled(true);
         Reader r = null;
 
-        if ( this.descriptor != null )
-        {
-            try
-            {
-                r = new FileReader( this.descriptor );
+        if (this.descriptor != null) {
+            try {
+                r = new FileReader(this.descriptor);
             }
-            catch(FileNotFoundException ex)
-            {
-                throw new MojoExecutionException( "Could not find specified descriptor" );
+            catch (FileNotFoundException ex) {
+                throw new MojoExecutionException("Could not find specified descriptor");
             }
-        }
-        else if ( this.descriptorId != null )
-        {
-            InputStream resourceAsStream = getClass().getResourceAsStream( "/uberwar/" + this.descriptorId + ".xml" );
-            if ( resourceAsStream == null )
-            {
-                throw new MojoExecutionException( "Descriptor with ID '" + this.descriptorId + "' not found" );
+        } else if (this.descriptorId != null) {
+            InputStream resourceAsStream = getClass().getResourceAsStream("/uberwar/" + this.descriptorId + ".xml");
+            if (resourceAsStream == null) {
+                throw new MojoExecutionException("Descriptor with ID '" + this.descriptorId + "' not found");
             }
-            r = new InputStreamReader( resourceAsStream );
-        }
-        else
-        {
-            throw new MojoExecutionException( "You must specify descriptor or descriptorId" );
+            r = new InputStreamReader(resourceAsStream);
+        } else {
+            throw new MojoExecutionException("You must specify descriptor or descriptorId");
         }
 
-        try
-        {
+        try {
             UberWarXpp3Reader reader = new UberWarXpp3Reader();
             MergeRoot root = reader.read(r);
 
@@ -198,33 +207,27 @@ public class UberWarMojo extends AbstractUberWarMojo implements Contextualizable
             // Add the war files
             WarArchiveMerger wam = new WarArchiveMerger();
             List wars = root.getWars();
-            if( wars.size() == 0 )
+            if (wars.size() == 0)
                 addAllWars(wam);
-            else
-            {
-                for(Iterator i = wars.iterator();i.hasNext();)
-                {
-                    String id = (String)i.next();
-                    addWar(wam, id );
+            else {
+                for (Iterator i = wars.iterator(); i.hasNext();) {
+                    String id = (String) i.next();
+                    addWar(wam, id);
                 }
             }
 
-            if( resolveDependencies )
-            {
-            	wam.setMergeJarFiles(false);
-            	addAllTransitiveJars(wam);
+            if (resolveDependencies) {
+                wam.setMergeJarFiles(false);
+                addAllTransitiveJars(wam);
+            } else {
+                // Just look at our dependent JAR files instead
+                addAllDependentJars(wam);
             }
-            else
-            {
-            	// Just look at our dependent JAR files instead
-            	addAllDependentJars(wam);
-            }
-            
+
             // List of <merge> nodes to perform, in order
-            for(Iterator i = root.getMerges().iterator(); i.hasNext();)
-            {
-                Merge merge = (Merge)i.next();
-                doMerge( wam, merge );
+            for (Iterator i = root.getMerges().iterator(); i.hasNext();) {
+                Merge merge = (Merge) i.next();
+                doMerge(wam, merge);
             }
 
             //WebXml merge = root.getWebXml();
@@ -239,156 +242,126 @@ public class UberWarMojo extends AbstractUberWarMojo implements Contextualizable
 
 
         }
-        catch(XmlPullParserException e)
-        {
+        catch (XmlPullParserException e) {
             throw new MojoExecutionException("Invalid XML descriptor", e);
         }
-        catch(IOException e)
-        {
+        catch (IOException e) {
             throw new MojoExecutionException("IOException creating UBERWAR", e);
         }
-        catch (JDOMException e)
-        {
+        catch (JDOMException e) {
             throw new MojoExecutionException("Xml format exception creating UBERWAR", e);
-        }        
-        catch (MergeException e)
-        {
+        }
+        catch (MergeException e) {
             throw new MojoExecutionException("Merging exception creating UBERWAR", e);
         }
-        
+
     }
 
-    
-    private void doMerge(WarArchiveMerger wam, Merge merge) throws MojoExecutionException
-    {
-        try
-        {
-            String type     = merge.getType();
-            String file     = merge.getFile();
+
+    private void doMerge(WarArchiveMerger wam, Merge merge) throws MojoExecutionException {
+        try {
+            String type = merge.getType();
+            String file = merge.getFile();
             String document = merge.getDocument();
-            String clazz    = merge.getClassname();
+            String clazz = merge.getClassname();
 
             MergeProcessor merger = null;
-            
-            if( type != null )
-            {
-              if( type.equalsIgnoreCase("web.xml") )
-              {                
-                merger = new MergeWebXml(getConfigDirectory()).create(wam, merge); ;                
-              }                
-              else if( type.equalsIgnoreCase("xslt") )
-              {                
-                merger = new MergeXslt(descriptor.getParentFile()).create(wam, merge); ;                
-              }      
+
+            if (type != null) {
+                if (type.equalsIgnoreCase("web.xml")) {
+                    merger = new MergeWebXml(getConfigDirectory()).create(wam, merge);
+                    ;
+                } else if (type.equalsIgnoreCase("xslt")) {
+                    merger = new MergeXslt(descriptor.getParentFile()).create(wam, merge);
+                    ;
+                }
+            } else {
+                merger = (MergeProcessor) Class.forName(clazz).newInstance();
             }
-            else
-            {
-              merger = (MergeProcessor) Class.forName(clazz).newInstance();
-            }                        
-              
-            if( merger != null )
-            {
-              if (document != null)
-              {
-                  merger = new DocumentStreamAdapter(merger);
-                  wam.addMergeProcessor(document, merger);
-              }
-              else if( file != null )
-              {                              
-                  wam.addMergeProcessor(file, merger);
-              }
-              
-              
-              //merger.performMerge();
+
+            if (merger != null) {
+                if (document != null) {
+                    merger = new DocumentStreamAdapter(merger);
+                    wam.addMergeProcessor(document, merger);
+                } else if (file != null) {
+                    wam.addMergeProcessor(file, merger);
+                }
+
+
+                //merger.performMerge();
             }
         }
-        catch(Exception e)
-        {
+        catch (Exception e) {
             throw new MojoExecutionException("Problem in file merge", e);
         }
     }
 
     /**
-     * Add all JAR files into the WAR file, calculated transitively and resolved in 
+     * Add all JAR files into the WAR file, calculated transitively and resolved in
      * the normal 'maven' way (I.E if 2 war files contain different versions, resolve to using
      * only *1* version).
-     * 
+     *
      * @param wam
      * @throws MojoExecutionException
      */
-    protected void addAllTransitiveJars(WarArchiveMerger wam) throws MojoExecutionException
-    {
-    	DependencyCalculator dc = new DependencyCalculator(artifactFactory,resolver,localRepository, remoteRepositories,mavenProject, mavenProjectBuilder, installer, container);
-    	
-    	try
-    	{
-    		for(Iterator i = dc.execute().iterator();i.hasNext();)
-    		{
-    			wam.addMergeItem(i.next());
-    		}
-    	}
-    	catch(Exception ex)
-    	{
-    		throw new MojoExecutionException("Problem merging dependent JAR files", ex);
-    	}
+    protected void addAllTransitiveJars(WarArchiveMerger wam) throws MojoExecutionException {
+        DependencyCalculator dc = new DependencyCalculator(artifactFactory, resolver, localRepository, remoteRepositories,
+                mavenProjectBuilder, installer, artifactMetadataSource, container);
+
+        try {
+            for (Iterator i = dc.execute(mavenProject).iterator(); i.hasNext();) {
+                wam.addMergeItem(i.next());
+            }
+        }
+        catch (Exception ex) {
+            throw new MojoExecutionException("Problem merging dependent JAR files", ex);
+        }
     }
-    
+
     /**
      * Add all the JAR files specified into the merge - these will appear
      * in the WEB-INF/lib directory.
+     *
      * @param wam
-     * @throws MojoExecutionException 
+     * @throws MojoExecutionException
      */
-    protected void addAllDependentJars(WarArchiveMerger wam) throws MojoExecutionException
-    {
-      for (Iterator iter = getProject().getArtifacts().iterator(); iter.hasNext();)
-      {
-          Artifact artifact = (Artifact) iter.next();
-          System.out.println("See " + artifact); 
-          ScopeArtifactFilter filter = new ScopeArtifactFilter(Artifact.SCOPE_RUNTIME);
-          if (!artifact.isOptional() && filter.include(artifact))
-          {
-            String type = artifact.getType();
-            
-            if ("jar".equals(type))
-            {
-              System.out.println("use " + artifact );
-              try
-              {
-                  wam.addMergeItem(artifact.getFile());
-              }
-              catch(MergeException e)
-              {
-                  throw new MojoExecutionException("Problem merging WAR", e);
-              }
-              
+    protected void addAllDependentJars(WarArchiveMerger wam) throws MojoExecutionException {
+        for (Iterator iter = getProject().getArtifacts().iterator(); iter.hasNext();) {
+            Artifact artifact = (Artifact) iter.next();
+            System.out.println("See " + artifact);
+            ScopeArtifactFilter filter = new ScopeArtifactFilter(Artifact.SCOPE_RUNTIME);
+            if (!artifact.isOptional() && filter.include(artifact)) {
+                String type = artifact.getType();
+
+                if ("jar".equals(type)) {
+                    System.out.println("use " + artifact);
+                    try {
+                        wam.addMergeItem(artifact.getFile());
+                    }
+                    catch (MergeException e) {
+                        throw new MojoExecutionException("Problem merging WAR", e);
+                    }
+
+                }
             }
-          }
-      }
+        }
     }
 
     protected void addWar(WarArchiveMerger wam, String artifactIdent)
-        throws MojoExecutionException, IOException
-    {
-        for (Iterator iter = getProject().getArtifacts().iterator(); iter.hasNext();)
-        {
+            throws MojoExecutionException, IOException {
+        for (Iterator iter = getProject().getArtifacts().iterator(); iter.hasNext();) {
             Artifact artifact = (Artifact) iter.next();
 
             ScopeArtifactFilter filter = new ScopeArtifactFilter(Artifact.SCOPE_RUNTIME);
-            if (!artifact.isOptional() && filter.include(artifact))
-            {
+            if (!artifact.isOptional() && filter.include(artifact)) {
                 String type = artifact.getType();
-                if ("war".equals(type))
-                {
+                if ("war".equals(type)) {
                     String name = artifact.getGroupId() + ":" + artifact.getArtifactId();
-                    if (name.equals(artifactIdent))
-                    {
-                        try
-                        {
+                    if (name.equals(artifactIdent)) {
+                        try {
                             wam.addMergeItem(new DefaultWarArchive(artifact.getFile().getPath()));
                         }
-                        catch(MergeException e)
-                        {
+                        catch (MergeException e) {
                             throw new MojoExecutionException("Problem merging WAR", e);
                         }
                         return;
@@ -399,28 +372,22 @@ public class UberWarMojo extends AbstractUberWarMojo implements Contextualizable
         // If we get here, we specified something for which there was no dependency
         // matching
         throw new MojoExecutionException("Could not find a dependent WAR file matching "
-            + artifactIdent);
+                + artifactIdent);
     }
 
-    protected void addAllWars(WarArchiveMerger wam) throws MojoExecutionException,IOException
-    {
-        for (Iterator iter = getProject().getArtifacts().iterator(); iter.hasNext();)
-        {
+    protected void addAllWars(WarArchiveMerger wam) throws MojoExecutionException, IOException {
+        for (Iterator iter = getProject().getArtifacts().iterator(); iter.hasNext();) {
             Artifact artifact = (Artifact) iter.next();
 
             ScopeArtifactFilter filter = new ScopeArtifactFilter(Artifact.SCOPE_RUNTIME);
-            
-            if (!artifact.isOptional() && filter.include(artifact))
-            {
+
+            if (!artifact.isOptional() && filter.include(artifact)) {
                 String type = artifact.getType();
-                if ("war".equals(type))
-                {
-                    try
-                    {                      
+                if ("war".equals(type)) {
+                    try {
                         wam.addMergeItem(new DefaultWarArchive(artifact.getFile().getPath()));
                     }
-                    catch(MergeException e)
-                    {
+                    catch (MergeException e) {
                         throw new MojoExecutionException("Problem merging WAR", e);
                     }
                 }
@@ -428,8 +395,8 @@ public class UberWarMojo extends AbstractUberWarMojo implements Contextualizable
         }
     }
 
-	public void contextualize(Context context) throws ContextException {
-		container = (PlexusContainer) context.get( PlexusConstants.PLEXUS_KEY );
+    public void contextualize(Context context) throws ContextException {
+        container = (PlexusContainer) context.get( PlexusConstants.PLEXUS_KEY );
 	}
 
 }
