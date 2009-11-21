@@ -23,34 +23,16 @@ package org.apache.maven.plugin.dependency.utils.filters;
  *
  */
 
-import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.dependency.fromConfiguration.ArtifactItem;
-import org.apache.maven.plugin.dependency.utils.markers.MarkerHandler;
 import org.apache.maven.shared.artifact.filter.collection.ArtifactFilterException;
 
 /**
  * @author <a href="mailto:brianf@apache.org">Brian Fox</a>
  * @version $Id$
  */
-public class ResolveFileFilter
-    extends MarkerFileFilter
+public interface ArtifactItemFilter
 {
 
-    public ResolveFileFilter( MarkerHandler handler )
-    {
-        super( true, true, true, handler );
-    }
-
-    public boolean isArtifactIncluded( ArtifactItem item ) throws ArtifactFilterException
-    {
-        handler.setArtifact( item.getArtifact() );
-        try
-        {
-            return ( !handler.isMarkerSet() );
-        }
-        catch ( MojoExecutionException e )
-        {
-            throw new ArtifactFilterException( e.getMessage(),e);
-        }
-    }
+    boolean isArtifactIncluded( ArtifactItem item )
+        throws ArtifactFilterException;
 }
